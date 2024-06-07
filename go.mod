@@ -1,6 +1,6 @@
 module pendyurinandrey.com/nakama-downloader-module
 
-go 1.22.4
+go 1.21.6
 
 require (
 	github.com/heroiclabs/nakama-common v1.31.0 // indirect
