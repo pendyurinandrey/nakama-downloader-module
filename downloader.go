@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"github.com/heroiclabs/nakama-common/runtime"
 	"hash/crc32"
 	"os"
@@ -31,7 +32,7 @@ type DownloaderResponse struct {
 	Type    string `json:"type"`
 	Version string `json:"version"`
 	Hash    string `json:"hash"`
-	Content []byte `json:"content"`
+	Content string `json:"content,omitempty"`
 }
 
 func RpcFileDownloader(ctx context.Context, logger runtime.Logger, db *sql.DB, nk runtime.NakamaModule, payload string) (string, error) {
@@ -48,16 +49,16 @@ func RpcFileDownloader(ctx context.Context, logger runtime.Logger, db *sql.DB, n
 
 	f, err := os.ReadFile(filePath)
 	if err != nil {
-		return "{}", runtime.NewError("File not found", notFoundCode)
+		return "{}", runtime.NewError(fmt.Sprintf("File not found on path: %s", filePath), notFoundCode)
 	}
 
 	crc32Table := crc32.MakeTable(crc32.IEEE)
 	fileCrc32 := strconv.FormatUint(uint64(crc32.Checksum(f, crc32Table)), 10)
 	var resp DownloaderResponse
 	if req.Hash != "" && fileCrc32 != req.Hash {
-		resp = DownloaderResponse{Type: req.Type, Version: req.Version, Hash: req.Hash, Content: nil}
+		resp = DownloaderResponse{Type: req.Type, Version: req.Version, Hash: req.Hash, Content: ""}
 	} else {
-		resp = DownloaderResponse{Type: req.Type, Version: req.Version, Hash: req.Hash, Content: f}
+		resp = DownloaderResponse{Type: req.Type, Version: req.Version, Hash: fileCrc32, Content: string(f)}
 	}
 	writeStatistics(resp, filePath, db, logger)
 	respStr, err := json.Marshal(resp)
@@ -123,11 +124,11 @@ func buildFilePath(req DownloaderRequest) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(defaultPath, req.Type, req.Version), nil
+	return filepath.Join(defaultPath, req.Type, req.Version) + ".json", nil
 }
 
 func writeStatistics(resp DownloaderResponse, filePath string, db *sql.DB, logger runtime.Logger) {
-	if resp.Content == nil {
+	if resp.Content == "" {
 		// Right now the method only stores statistics for existing files with matched hash.
 		return
 	}
@@ -135,7 +136,7 @@ func writeStatistics(resp DownloaderResponse, filePath string, db *sql.DB, logge
 		insert into download_statistics(file_name, file_hash, download_count)
 		values($1, $2, $3)
 		on conflict(file_name, file_hash) do update
-		    set download_count = download_count + 1
+		    set download_count = download_statistics.download_count + 1
 	`, filePath, resp.Hash, 1)
 	if err != nil {
 		logger.Error("Failed to save statistics to database: %e", err)
