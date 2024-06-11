@@ -1,5 +1,6 @@
 runtime:
   env:
+    - "default_file_path=/"
     - "default_type=core"
     - "default_version=1.0.0"
 

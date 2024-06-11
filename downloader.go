@@ -4,16 +4,17 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"fmt"
 	"github.com/heroiclabs/nakama-common/runtime"
 	"google.golang.org/grpc/codes"
 	"hash/crc32"
 	"os"
+	"path/filepath"
 	"strconv"
 )
 
 const defaultTypeEnvVarName string = "default_type"
 const defaultVersionEnvVarName string = "default_version"
+const defaultFilePathEnvVarName string = "default_file_path"
 
 var config = make(map[string]string)
 
@@ -37,7 +38,12 @@ func RpcFileDownloader(ctx context.Context, logger runtime.Logger, db *sql.DB, n
 		return "{}", err
 	}
 
-	f, err := os.ReadFile(fmt.Sprintf("/%s/%s.json", req.Type, req.Version))
+	filePath, err := buildFilePath(req)
+	if err != nil {
+		return "{}", err
+	}
+
+	f, err := os.ReadFile(filePath)
 	if err != nil {
 		return "{}", runtime.NewError("File not found", int(codes.NotFound))
 	}
@@ -50,9 +56,12 @@ func RpcFileDownloader(ctx context.Context, logger runtime.Logger, db *sql.DB, n
 	} else {
 		resp = DownloaderResponse{Type: req.Type, Version: req.Version, Hash: req.Hash, Content: f}
 	}
+	writeStatistics(resp, filePath, db, logger)
 	respStr, err := json.Marshal(resp)
-	// TODO: Better error handling
-	return string(respStr[:]), err
+	if err != nil {
+		return "{}", err
+	}
+	return string(respStr[:]), nil
 }
 
 func unmarshalRequest(payload string, logger runtime.Logger) (DownloaderRequest, error) {
@@ -104,4 +113,28 @@ func lookupEnvVarOrGetFromCache(key string) (string, error) {
 	}
 
 	return value, nil
+}
+
+func buildFilePath(req DownloaderRequest) (string, error) {
+	defaultPath, err := lookupEnvVarOrGetFromCache(defaultFilePathEnvVarName)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(defaultPath, req.Type, req.Version), nil
+}
+
+func writeStatistics(resp DownloaderResponse, filePath string, db *sql.DB, logger runtime.Logger) {
+	if resp.Content == nil {
+		// Right now the method only stores statistics for existing files with matched hash.
+		return
+	}
+	_, err := db.Exec(`
+		insert into download_statistics(file_name, file_hash, download_count)
+		values($1, $2, $3)
+		on conflict(file_name, file_hash) do update
+		    set download_count = download_count + 1
+	`, filePath, resp.Hash, 1)
+	if err != nil {
+		logger.Error("Failed to save statistics to database: %e", err)
+	}
 }
