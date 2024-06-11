@@ -8,7 +8,6 @@ import (
 
 func InitModule(ctx context.Context, logger runtime.Logger, db *sql.DB, nk runtime.NakamaModule, initializer runtime.Initializer) error {
 	err := createScheme(ctx, db)
-	logger.Info("Migration has been applied")
 	if err != nil {
 		logger.Error("Failed to create DB scheme: %e", err)
 		return err

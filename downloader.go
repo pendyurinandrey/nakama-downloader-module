@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"github.com/heroiclabs/nakama-common/runtime"
-	"google.golang.org/grpc/codes"
 	"hash/crc32"
 	"os"
 	"path/filepath"
@@ -15,6 +14,10 @@ import (
 const defaultTypeEnvVarName string = "default_type"
 const defaultVersionEnvVarName string = "default_version"
 const defaultFilePathEnvVarName string = "default_file_path"
+
+// I decided not to add google.golang.org/grpc to the dependencies list just for 2 status codes.
+const notFoundCode = 5
+const internalErrorCode = 13
 
 var config = make(map[string]string)
 
@@ -45,7 +48,7 @@ func RpcFileDownloader(ctx context.Context, logger runtime.Logger, db *sql.DB, n
 
 	f, err := os.ReadFile(filePath)
 	if err != nil {
-		return "{}", runtime.NewError("File not found", int(codes.NotFound))
+		return "{}", runtime.NewError("File not found", notFoundCode)
 	}
 
 	crc32Table := crc32.MakeTable(crc32.IEEE)
@@ -106,7 +109,7 @@ func lookupEnvVarOrGetFromCache(key string) (string, error) {
 	if !ok {
 		value, exists := os.LookupEnv(key)
 		if !exists {
-			return "", runtime.NewError("Wrong service configuration", int(codes.Internal))
+			return "", runtime.NewError("Wrong service configuration", internalErrorCode)
 		}
 		config[key] = value
 		return value, nil
