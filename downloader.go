@@ -6,15 +6,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/heroiclabs/nakama-common/runtime"
+	"google.golang.org/grpc/codes"
 	"hash/crc32"
 	"os"
 	"strconv"
 )
 
-const defaultType string = "core"
-const defaultVersion string = "1.0.0"
+const defaultTypeEnvVarName string = "default_type"
+const defaultVersionEnvVarName string = "default_version"
 
-const notFoundErrorCode = 5
+var config = make(map[string]string)
 
 type DownloaderRequest struct {
 	Type    string `json:"type"`
@@ -31,20 +32,14 @@ type DownloaderResponse struct {
 
 func RpcFileDownloader(ctx context.Context, logger runtime.Logger, db *sql.DB, nk runtime.NakamaModule, payload string) (string, error) {
 	logger.Info("Payload: %s", payload)
-	req := DownloaderRequest{Type: defaultType, Version: defaultVersion}
-	err := json.Unmarshal([]byte(payload), &req)
+	req, err := unmarshalRequest(payload, logger)
 	if err != nil {
-		/*
-			Since it's more likely a client's error, it's better to log it at a lower logging level than 'error'
-			to avoid excessive logs. In a production environment, it will be possible to decrease the logging level
-			to show this type of error when necessary.
-		*/
-		logger.Info("Unable to deserialize request %e", err)
-		return "", err
+		return "{}", err
 	}
+
 	f, err := os.ReadFile(fmt.Sprintf("/%s/%s.json", req.Type, req.Version))
 	if err != nil {
-		return "{}", runtime.NewError("File not found", notFoundErrorCode)
+		return "{}", runtime.NewError("File not found", int(codes.NotFound))
 	}
 
 	crc32Table := crc32.MakeTable(crc32.IEEE)
@@ -58,4 +53,55 @@ func RpcFileDownloader(ctx context.Context, logger runtime.Logger, db *sql.DB, n
 	respStr, err := json.Marshal(resp)
 	// TODO: Better error handling
 	return string(respStr[:]), err
+}
+
+func unmarshalRequest(payload string, logger runtime.Logger) (DownloaderRequest, error) {
+	req, err := buildDefaultRequest()
+	if err != nil {
+		return req, nil
+	}
+	err = json.Unmarshal([]byte(payload), &req)
+	if err != nil {
+		/*
+			Since it is more likely a client's error, it's better to log it at a lower logging level than 'error'
+			to avoid excessive logs. In a production environment, the logging level can be adjusted
+			to show this type of error when necessary.
+		*/
+		logger.Info("Unable to deserialize request %e", err)
+		/*
+			It might not be a good idea to return the request object with default values in this case.
+			Using pointers here is a bit questionable because the object will be copied to the heap
+			by the end of the method and then garbage collected when the pointer becomes unusable.
+			Since the request object is small and created frequently, it is better to leave it on the stack.
+		*/
+		return req, err
+	}
+	return req, nil
+}
+
+func buildDefaultRequest() (DownloaderRequest, error) {
+	defaultType, err := lookupEnvVarOrGetFromCache(defaultTypeEnvVarName)
+	if err != nil {
+		return DownloaderRequest{}, err
+	}
+	defaultVersion, err := lookupEnvVarOrGetFromCache(defaultVersionEnvVarName)
+	if err != nil {
+		return DownloaderRequest{}, err
+	}
+
+	return DownloaderRequest{Type: defaultType, Version: defaultVersion}, nil
+}
+
+func lookupEnvVarOrGetFromCache(key string) (string, error) {
+	value, ok := config[key]
+	if !ok {
+		value, exists := os.LookupEnv(key)
+		if !exists {
+			return "", runtime.NewError("Wrong service configuration", int(codes.Internal))
+		}
+		config[key] = value
+		return value, nil
+	}
+
+	return value, nil
 }

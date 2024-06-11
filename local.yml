@@ -1,2 +1,7 @@
+runtime:
+  env:
+    - "default_type=core"
+    - "default_version=1.0.0"
+
 logger:
   level: INFO
