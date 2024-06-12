@@ -43,7 +43,26 @@ func TestThatDownloaderWillReturnDataOfCustomTypeWith5_0_0Version(t *testing.T) 
 	assert.Equal(t, "5.0.0", response.Version)
 	assert.Equal(t, "3181399843", response.Hash)
 	assert.Equal(t, "{\"custom\": \"5.0.0\"}", response.Content)
+}
 
+func TestThatStatisticsWillBeStoredToDatabase(t *testing.T) {
+	db, dbMock := createDbMock()
+	mockLogger := mocks.NewLoggerMock(t)
+	mockLogger.On("Info", mock.Anything, mock.Anything).Return(nil)
+	mockNakamaModule := mocks.NewNakamaModuleMock(t)
+	payload := buildPayload("custom", "5.0.0", "")
+	expectedPath, err := buildFilePath("custom", "5.0.0")
+	if err != nil {
+		panic(err)
+	}
+	dbMock.
+		ExpectExec("insert into download_statistics").
+		WithArgs(expectedPath, "3181399843", 1).
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	_, err = RpcFileDownloader(context.Background(), mockLogger, db, mockNakamaModule, payload)
+	assert.NoError(t, err)
+	err = dbMock.ExpectationsWereMet()
+	assert.NoError(t, err)
 }
 
 func createDbMock() (*sql.DB, sqlmock.Sqlmock) {

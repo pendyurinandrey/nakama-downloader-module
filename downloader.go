@@ -43,7 +43,7 @@ func RpcFileDownloader(ctx context.Context, logger runtime.Logger, db *sql.DB, n
 		return "{}", err
 	}
 
-	filePath, err := buildFilePath(req)
+	filePath, err := buildFilePath(req.Type, req.Version)
 	if err != nil {
 		return "{}", err
 	}
@@ -123,12 +123,12 @@ func lookupEnvVarOrGetFromCache(key string) (string, error) {
 	return value, nil
 }
 
-func buildFilePath(req DownloaderRequest) (string, error) {
+func buildFilePath(typeName string, version string) (string, error) {
 	defaultPath, err := lookupEnvVarOrGetFromCache(defaultFilePathEnvVarName)
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(defaultPath, req.Type, req.Version) + ".json", nil
+	return filepath.Join(defaultPath, typeName, version) + ".json", nil
 }
 
 func writeStatistics(resp DownloaderResponse, filePath string, db *sql.DB, logger runtime.Logger) {
