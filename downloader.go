@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 )
 
 const defaultTypeEnvVarName string = "default_type"
@@ -71,6 +72,9 @@ func RpcFileDownloader(ctx context.Context, logger runtime.Logger, db *sql.DB, n
 func unmarshalRequest(payload string, logger runtime.Logger) (DownloaderRequest, error) {
 	req, err := buildDefaultRequest()
 	if err != nil {
+		return req, nil
+	}
+	if strings.TrimSpace(payload) == "" {
 		return req, nil
 	}
 	err = json.Unmarshal([]byte(payload), &req)

@@ -1,0 +1,12 @@
+quiet: False
+keeptree: True
+disable-version-string: True
+with-expecter: True
+mockname: "{{.InterfaceName}}Mock"
+filename: "{{.MockName}}.go"
+outpkg: mocks
+packages:
+  github.com/heroiclabs/nakama-common/runtime:
+    interfaces:
+      Logger:
+      NakamaModule:
