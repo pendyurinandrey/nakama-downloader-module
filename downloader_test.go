@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"os"
@@ -18,7 +19,7 @@ func init() {
 
 func TestThatBlankPayloadWillBeParsedAsDefaultRequest(t *testing.T) {
 	db, _ := createDbMock()
-	mockLogger := buildLoggerMock(t)
+	mockLogger := buildLoggerMock()
 	mockNakamaModule := mocks.NewNakamaModuleMock(t)
 
 	res, err := RpcFileDownloader(context.Background(), mockLogger, db, mockNakamaModule, "")
@@ -32,7 +33,7 @@ func TestThatBlankPayloadWillBeParsedAsDefaultRequest(t *testing.T) {
 
 func TestThatDownloaderWillReturnDataOfCustomTypeWith5_0_0Version(t *testing.T) {
 	db, _ := createDbMock()
-	mockLogger := buildLoggerMock(t)
+	mockLogger := buildLoggerMock()
 	mockNakamaModule := mocks.NewNakamaModuleMock(t)
 	payload := buildPayload("custom", "5.0.0", "")
 
@@ -47,8 +48,7 @@ func TestThatDownloaderWillReturnDataOfCustomTypeWith5_0_0Version(t *testing.T) 
 
 func TestThatStatisticsWillBeStoredToDatabase(t *testing.T) {
 	db, dbMock := createDbMock()
-	mockLogger := mocks.NewLoggerMock(t)
-	mockLogger.On("Info", mock.Anything, mock.Anything).Return(nil)
+	mockLogger := buildLoggerMock()
 	mockNakamaModule := mocks.NewNakamaModuleMock(t)
 	payload := buildPayload("custom", "5.0.0", "")
 	expectedPath, err := buildFilePath("custom", "5.0.0")
@@ -65,6 +65,36 @@ func TestThatStatisticsWillBeStoredToDatabase(t *testing.T) {
 	assert.NoError(t, err)
 }
 
+func TestThatContentWillBeEmptyIfHashCodesDoNotMatch(t *testing.T) {
+	db, _ := createDbMock()
+	mockLogger := buildLoggerMock()
+	mockNakamaModule := mocks.NewNakamaModuleMock(t)
+	payload := buildPayload("custom", "5.0.0", "notcrc32")
+
+	res, err := RpcFileDownloader(context.Background(), mockLogger, db, mockNakamaModule, payload)
+	assert.NoError(t, err)
+	response := unmarshalResponse(res)
+	assert.Equal(t, "custom", response.Type)
+	assert.Equal(t, "5.0.0", response.Version)
+	assert.Equal(t, "notcrc32", response.Hash)
+	assert.Equal(t, "", response.Content)
+}
+
+func TestThatErrorWillBeRaisedIfFileIsNotFound(t *testing.T) {
+	db, _ := createDbMock()
+	mockLogger := buildLoggerMock()
+	mockNakamaModule := mocks.NewNakamaModuleMock(t)
+	payload := buildPayload("non_existing_type", "5.0.0", "")
+
+	res, rpcErr := RpcFileDownloader(context.Background(), mockLogger, db, mockNakamaModule, payload)
+	expectedFilePath, err := buildFilePath("non_existing_type", "5.0.0")
+	if err != nil {
+		panic(err)
+	}
+	assert.EqualError(t, rpcErr, fmt.Sprintf("File not found on path: %s", expectedFilePath))
+	assert.Equal(t, "{}", res)
+}
+
 func createDbMock() (*sql.DB, sqlmock.Sqlmock) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
@@ -79,11 +109,11 @@ func setEnvVars() {
 	os.Setenv(defaultFilePathEnvVarName, "./test_data")
 }
 
-func buildLoggerMock(t *testing.T) *mocks.LoggerMock {
-	mockLogger := mocks.NewLoggerMock(t)
+func buildLoggerMock() *mocks.LoggerMock {
+	mockLogger := mocks.LoggerMock{}
 	mockLogger.On("Info", mock.Anything, mock.Anything).Return(nil)
 	mockLogger.On("Error", mock.Anything, mock.Anything).Return(nil)
-	return mockLogger
+	return &mockLogger
 }
 
 func unmarshalResponse(res string) DownloaderResponse {
