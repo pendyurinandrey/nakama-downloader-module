@@ -17,7 +17,8 @@ const defaultTypeEnvVarName string = "default_type"
 const defaultVersionEnvVarName string = "default_version"
 const defaultFilePathEnvVarName string = "default_file_path"
 
-// I decided not to add google.golang.org/grpc to the dependencies list just for 2 status codes.
+// I decided not to add google.golang.org/grpc to the dependencies list just for 3 status codes.
+const invalidArgumentCode = 3
 const notFoundCode = 5
 const internalErrorCode = 13
 
@@ -37,8 +38,12 @@ type DownloaderResponse struct {
 }
 
 func RpcFileDownloader(ctx context.Context, logger runtime.Logger, db *sql.DB, nk runtime.NakamaModule, payload string) (string, error) {
-	logger.Info("Payload: %s", payload)
 	req, err := unmarshalRequest(payload, logger)
+	if err != nil {
+		return "{}", err
+	}
+
+	err = validateRequest(req)
 	if err != nil {
 		return "{}", err
 	}
@@ -146,4 +151,25 @@ func writeStatistics(resp DownloaderResponse, filePath string, db *sql.DB, logge
 	if err != nil {
 		logger.Error("Failed to save statistics to database: %e", err)
 	}
+}
+
+func validateRequest(req DownloaderRequest) error {
+	/*
+		It's necessary to be prepared for the situation when, for example, `type` will contain following value
+		`/../../core`. If such value will be passed to filepath.Join, then the RPC will provide the ability to
+		get any file outside the desired folder. It'll be a serious vulnerability.
+
+		Linux does not allow only 2 characters in folder names: / and /0. It looks like that
+		checking for absence of `/` is enough in the current case.
+	*/
+
+	if strings.Contains(req.Type, "/") {
+		return runtime.NewError("`type` field must not contain /", invalidArgumentCode)
+	}
+
+	if strings.Contains(req.Version, "/") {
+		return runtime.NewError("`version` field must not contain /", invalidArgumentCode)
+	}
+
+	return nil
 }

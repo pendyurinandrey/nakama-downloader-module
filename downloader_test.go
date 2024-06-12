@@ -96,6 +96,28 @@ func TestThatErrorWillBeRaisedIfFileIsNotFound(t *testing.T) {
 	assert.Equal(t, "{}", res)
 }
 
+func TestThatErrorWillBeRaisedIfTypeContainsBackslash(t *testing.T) {
+	db, _ := createDbMock()
+	mockLogger := buildLoggerMock()
+	mockNakamaModule := mocks.NewNakamaModuleMock(t)
+	payload := buildPayload("../../core", "5.0.0", nil)
+
+	res, rpcErr := RpcFileDownloader(context.Background(), mockLogger, db, mockNakamaModule, payload)
+	assert.EqualError(t, rpcErr, "`type` field must not contain /")
+	assert.Equal(t, "{}", res)
+}
+
+func TestThatErrorWillBeRaisedIfVersionContainsBackslash(t *testing.T) {
+	db, _ := createDbMock()
+	mockLogger := buildLoggerMock()
+	mockNakamaModule := mocks.NewNakamaModuleMock(t)
+	payload := buildPayload("core", "../5.0.0", nil)
+
+	res, rpcErr := RpcFileDownloader(context.Background(), mockLogger, db, mockNakamaModule, payload)
+	assert.EqualError(t, rpcErr, "`version` field must not contain /")
+	assert.Equal(t, "{}", res)
+}
+
 func createDbMock() (*sql.DB, sqlmock.Sqlmock) {
 	db, mock, err := sqlmock.New()
 	if err != nil {
