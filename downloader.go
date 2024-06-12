@@ -24,16 +24,16 @@ const internalErrorCode = 13
 var config = make(map[string]string)
 
 type DownloaderRequest struct {
-	Type    string `json:"type"`
-	Version string `json:"version"`
-	Hash    string `json:"hash,omitempty"`
+	Type    string  `json:"type"`
+	Version string  `json:"version"`
+	Hash    *string `json:"hash,omitempty"`
 }
 
 type DownloaderResponse struct {
-	Type    string `json:"type"`
-	Version string `json:"version"`
-	Hash    string `json:"hash"`
-	Content string `json:"content,omitempty"`
+	Type    string  `json:"type"`
+	Version string  `json:"version"`
+	Hash    *string `json:"hash"`
+	Content *string `json:"content"`
 }
 
 func RpcFileDownloader(ctx context.Context, logger runtime.Logger, db *sql.DB, nk runtime.NakamaModule, payload string) (string, error) {
@@ -56,10 +56,11 @@ func RpcFileDownloader(ctx context.Context, logger runtime.Logger, db *sql.DB, n
 	crc32Table := crc32.MakeTable(crc32.IEEE)
 	fileCrc32 := strconv.FormatUint(uint64(crc32.Checksum(f, crc32Table)), 10)
 	var resp DownloaderResponse
-	if req.Hash != "" && fileCrc32 != req.Hash {
-		resp = DownloaderResponse{Type: req.Type, Version: req.Version, Hash: req.Hash, Content: ""}
+	if req.Hash != nil && fileCrc32 != *req.Hash {
+		resp = DownloaderResponse{Type: req.Type, Version: req.Version, Hash: req.Hash, Content: nil}
 	} else {
-		resp = DownloaderResponse{Type: req.Type, Version: req.Version, Hash: fileCrc32, Content: string(f)}
+		content := string(f)
+		resp = DownloaderResponse{Type: req.Type, Version: req.Version, Hash: &fileCrc32, Content: &content}
 	}
 	writeStatistics(resp, filePath, db, logger)
 	respStr, err := json.Marshal(resp)
@@ -132,7 +133,7 @@ func buildFilePath(typeName string, version string) (string, error) {
 }
 
 func writeStatistics(resp DownloaderResponse, filePath string, db *sql.DB, logger runtime.Logger) {
-	if resp.Content == "" {
+	if resp.Content == nil {
 		// Right now the method only stores statistics for existing files with matched hash.
 		return
 	}

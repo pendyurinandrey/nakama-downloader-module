@@ -27,30 +27,30 @@ func TestThatBlankPayloadWillBeParsedAsDefaultRequest(t *testing.T) {
 	response := unmarshalResponse(res)
 	assert.Equal(t, "core", response.Type)
 	assert.Equal(t, "1.0.0", response.Version)
-	assert.Equal(t, "2358080557", response.Hash)
-	assert.Equal(t, "{\"core\": \"1.0.0\"}", response.Content)
+	assert.Equal(t, "2358080557", *response.Hash)
+	assert.Equal(t, "{\"core\": \"1.0.0\"}", *response.Content)
 }
 
 func TestThatDownloaderWillReturnDataOfCustomTypeWith5_0_0Version(t *testing.T) {
 	db, _ := createDbMock()
 	mockLogger := buildLoggerMock()
 	mockNakamaModule := mocks.NewNakamaModuleMock(t)
-	payload := buildPayload("custom", "5.0.0", "")
+	payload := buildPayload("custom", "5.0.0", nil)
 
 	res, err := RpcFileDownloader(context.Background(), mockLogger, db, mockNakamaModule, payload)
 	assert.NoError(t, err)
 	response := unmarshalResponse(res)
 	assert.Equal(t, "custom", response.Type)
 	assert.Equal(t, "5.0.0", response.Version)
-	assert.Equal(t, "3181399843", response.Hash)
-	assert.Equal(t, "{\"custom\": \"5.0.0\"}", response.Content)
+	assert.Equal(t, "3181399843", *response.Hash)
+	assert.Equal(t, "{\"custom\": \"5.0.0\"}", *response.Content)
 }
 
 func TestThatStatisticsWillBeStoredToDatabase(t *testing.T) {
 	db, dbMock := createDbMock()
 	mockLogger := buildLoggerMock()
 	mockNakamaModule := mocks.NewNakamaModuleMock(t)
-	payload := buildPayload("custom", "5.0.0", "")
+	payload := buildPayload("custom", "5.0.0", nil)
 	expectedPath, err := buildFilePath("custom", "5.0.0")
 	if err != nil {
 		panic(err)
@@ -69,22 +69,23 @@ func TestThatContentWillBeEmptyIfHashCodesDoNotMatch(t *testing.T) {
 	db, _ := createDbMock()
 	mockLogger := buildLoggerMock()
 	mockNakamaModule := mocks.NewNakamaModuleMock(t)
-	payload := buildPayload("custom", "5.0.0", "notcrc32")
+	hash := "notcrc32"
+	payload := buildPayload("custom", "5.0.0", &hash)
 
 	res, err := RpcFileDownloader(context.Background(), mockLogger, db, mockNakamaModule, payload)
 	assert.NoError(t, err)
 	response := unmarshalResponse(res)
 	assert.Equal(t, "custom", response.Type)
 	assert.Equal(t, "5.0.0", response.Version)
-	assert.Equal(t, "notcrc32", response.Hash)
-	assert.Equal(t, "", response.Content)
+	assert.Equal(t, "notcrc32", *response.Hash)
+	assert.Nil(t, response.Content)
 }
 
 func TestThatErrorWillBeRaisedIfFileIsNotFound(t *testing.T) {
 	db, _ := createDbMock()
 	mockLogger := buildLoggerMock()
 	mockNakamaModule := mocks.NewNakamaModuleMock(t)
-	payload := buildPayload("non_existing_type", "5.0.0", "")
+	payload := buildPayload("non_existing_type", "5.0.0", nil)
 
 	res, rpcErr := RpcFileDownloader(context.Background(), mockLogger, db, mockNakamaModule, payload)
 	expectedFilePath, err := buildFilePath("non_existing_type", "5.0.0")
@@ -125,7 +126,7 @@ func unmarshalResponse(res string) DownloaderResponse {
 	return response
 }
 
-func buildPayload(typeName string, version string, hash string) string {
+func buildPayload(typeName string, version string, hash *string) string {
 	req := DownloaderRequest{Type: typeName, Version: version, Hash: hash}
 	payload, err := json.Marshal(req)
 	if err != nil {
